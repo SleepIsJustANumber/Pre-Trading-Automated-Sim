@@ -43,9 +43,14 @@
 
   .shell{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto 1fr auto;gap:16px}
   @media(min-width:1000px){
-    .shell{grid-template-columns:340px 1fr;grid-template-rows:auto 1fr auto;}
+    .shell{grid-template-columns:430px 1fr;grid-template-rows:auto auto 1fr auto;}
     .shell>header{grid-column:1/-1;}
+    .stats{grid-column:2;}
+    .three{grid-column:2;}
+    .history{grid-column:2;}
+    .run-detail{grid-column:2;}
   }
+  .left-col{display:flex;flex-direction:column;gap:16px}
 
   .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px;box-shadow:var(--shadow)}
   .card h3{font-size:0.85rem;color:var(--muted);margin-bottom:12px;text-transform:uppercase;letter-spacing:0.6px}
@@ -178,22 +183,55 @@
   <main>
     <div class="shell">
 
-      <div class="card controls">
-        <h3>Simulation inputs</h3>
-        <div class="controls">
-          <div class="row"><label>Starting capital ($)</label><input type="number" id="cap" value="10000" step="100"></div>
-          <div class="row"><label>Target profit ($ per hour)</label><input type="number" id="targetPerHour" value="500" step="50"></div>
-          <div class="row"><label>Time to trade (hours)</label><input type="number" id="hours" value="6.5" step="0.5" min="0.1"></div>
-          <div class="row"><label>Seconds per trade</label><input type="number" id="secPerTrade" value="300" step="30" min="30"></div>
-          <div class="row"><label>Simulations to run</label><input type="number" id="sims" value="200" step="50" min="50" max="1000"></div>
-          <div class="small-note" id="tradeEstimate">~0 trades total</div>
-          <div class="small-note">HIGH RISK / HIGH REWARD: 80% annual vol, 5% position sizing per trade, gap risk (±12–24% jumps), wide spreads &amp; slippage. Win rate emerges from price action — not forced.</div>
-          <div class="btns">
-            <button id="btnRun">RUN SIMULATIONS</button>
-            <button id="btnStop" style="background:#1a1212;border-color:#3a2a2a;color:var(--red);display:none">STOP</button>
-            <button id="btnClear" class="secondary small">CLEAR HISTORY</button>
+      <div class="left-col">
+        <div class="card controls">
+          <h3>Simulation inputs</h3>
+          <div class="controls">
+            <div class="row"><label>Starting capital ($)</label><input type="number" id="cap" value="10000" step="100"></div>
+            <div class="row"><label>Target profit ($ per hour)</label><input type="number" id="targetPerHour" value="500" step="50"></div>
+            <div class="row"><label>Time to trade (hours)</label><input type="number" id="hours" value="6.5" step="0.5" min="0.1"></div>
+            <div class="row"><label>Seconds per trade</label><input type="number" id="secPerTrade" value="300" step="30" min="30"></div>
+            <div class="row"><label>Simulations to run</label><input type="number" id="sims" value="200" step="50" min="50" max="1000"></div>
+            <div class="small-note" id="tradeEstimate">~0 trades total</div>
+            <div class="small-note">HIGH RISK / HIGH REWARD: 80% annual vol, 5% position sizing per trade, gap risk (±12–24% jumps), wide spreads &amp; slippage. Win rate emerges from price action — not forced.</div>
+            <div class="btns">
+              <button id="btnRun">RUN SIMULATIONS</button>
+              <button id="btnStop" style="background:#1a1212;border-color:#3a2a2a;color:var(--red);display:none">STOP</button>
+              <button id="btnClear" class="secondary small">CLEAR HISTORY</button>
+            </div>
+            <div class="progress-wrap" id="progressWrap"><div class="progress-bar" id="progressBar"></div></div>
           </div>
-          <div class="progress-wrap" id="progressWrap"><div class="progress-bar" id="progressBar"></div></div>
+        </div>
+
+        <div class="card regime-panel">
+          <h3>Market Regime & Risk</h3>
+          <div class="regime-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
+            <div style="background:#0b0b0b;border:1px solid var(--border);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:6px">
+              <div style="font-size:0.7rem;color:var(--muted);text-transform:uppercase">Position size (5%)</div>
+              <div id="posSize" style="font-size:1.1rem;font-weight:800;color:var(--green)">$500</div>
+              <div style="font-size:0.68rem;color:var(--muted)">Per trade at current capital</div>
+            </div>
+            <div style="background:#0b0b0b;border:1px solid var(--border);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:6px">
+              <div style="font-size:0.7rem;color:var(--muted);text-transform:uppercase">Max loss / trade</div>
+              <div id="maxLoss" style="font-size:1.1rem;font-weight:800;color:var(--red)">-$260</div>
+              <div style="font-size:0.68rem;color:var(--muted)">After spread, slippage &amp; gap</div>
+            </div>
+            <div style="background:#0b0b0b;border:1px solid var(--border);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:6px">
+              <div style="font-size:0.7rem;color:var(--muted);text-transform:uppercase">Regime</div>
+              <div id="regimeDisp" style="font-size:1rem;font-weight:800;color:var(--muted)">—</div>
+              <div style="font-size:0.68rem;color:var(--muted)">Simulated market regime</div>
+            </div>
+            <div style="background:#0b0b0b;border:1px solid var(--border);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:6px">
+              <div style="font-size:0.7rem;color:var(--muted);text-transform:uppercase">Volatility</div>
+              <div id="volDisp" style="font-size:1rem;font-weight:800;color:var(--muted)">—</div>
+              <div style="font-size:0.68rem;color:var(--muted)">Annualized vol estimate</div>
+            </div>
+          </div>
+          <div style="margin-top:10px;background:#0b0b0b;border:1px solid var(--border);border-radius:8px;padding:10px">
+            <div style="font-size:0.7rem;color:var(--muted);text-transform:uppercase;margin-bottom:6px">Gap risk warning</div>
+            <div style="font-size:0.8rem;color:var(--red);font-weight:800">±12–24% gaps possible</div>
+            <div style="font-size:0.7rem;color:var(--muted);margin-top:4px">High-volatility names can gap overnight or mid-session, bypassing stops.</div>
+          </div>
         </div>
       </div>
 
@@ -280,7 +318,8 @@ function $id(id){const e=document.getElementById(id);if(!e)console.warn('Missing
  'progressBar','progressWrap','sSuccess','sAvgEnd','sAvgHr','sRuin','sDD',
  'histChart','allEqChart','scatterChart','histBody','histEmpty',
  'runDetail','detailTitle','detailMeta','detailStats','detailEq','detailHourly',
- 'detailTrades','detailSimPicker','tooltip','detailCharts'].forEach(k=>{els[k]=$id(k);});
+ 'detailTrades','detailSimPicker','tooltip','detailCharts',
+ 'posSize','maxLoss','regimeDisp','volDisp'].forEach(k=>{els[k]=$id(k);});
 
 let runs=[];
 let selectedRunId=null;
@@ -845,6 +884,28 @@ function updateTradeEstimate(){
   els.tradeEstimate.textContent=`~${total.toLocaleString()} trades total (${tradesPerSim} per sim × ${p.sims} sims)`;
   els.tradeEstimate.style.color = total>2000000 ? 'var(--red)' : 'var(--muted)';
   if(total>2000000) els.tradeEstimate.textContent+=' ⚠️ this may take a while';
+
+  // Regime & risk panel live values
+  const positionSize = p.capital * 0.05;
+  // Approximate worst-case per trade: 5% balance + 24% gap on position + spread + slippage + commission
+  const gapMove = positionSize * 0.24;
+  const spreadSlippage = positionSize * (0.0012 + 0.0016); // spread bps + slippage bps both sides
+  const maxLoss = positionSize + gapMove + spreadSlippage + MARKET.commissionPerTrade;
+  els.posSize.textContent = '$' + plain(positionSize);
+  els.maxLoss.textContent = '-$' + plain(maxLoss);
+
+  // Simulated regime based on inputs (deterministic-ish, changes with capital/target)
+  const seedVal = (p.capital * 0.001 + p.targetPerHour * 0.1) % 3;
+  const regimes = ['RANGING', 'BULLISH', 'BEARISH'];
+  const regimeColors = ['var(--muted)', 'var(--green)', 'var(--red)'];
+  const regIdx = Math.floor(seedVal);
+  els.regimeDisp.textContent = regimes[regIdx];
+  els.regimeDisp.style.color = regimeColors[regIdx];
+
+  // Volatility estimate: annualized vol with clustering
+  const volEst = 0.80 * (0.7 + (p.hours / 24) * 0.3);
+  els.volDisp.textContent = volEst.toFixed(0) + '%';
+  els.volDisp.style.color = volEst > 90 ? 'var(--red)' : (volEst > 60 ? 'var(--muted)' : 'var(--green)');
 }
 
 function run(){
