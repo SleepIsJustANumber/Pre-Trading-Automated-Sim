@@ -43,14 +43,12 @@
 
   .shell{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto 1fr auto;gap:16px}
   @media(min-width:1000px){
-    .shell{grid-template-columns:430px 1fr;grid-template-rows:auto auto 1fr auto;}
     .shell>header{grid-column:1/-1;}
-    .stats{grid-column:2;}
-    .three{grid-column:2;}
-    .history{grid-column:2;}
-    .run-detail{grid-column:2;}
   }
-  .left-col{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+  .left-col{display:grid;grid-template-columns:1fr;gap:16px;align-items:start}
+  @media(min-width:1000px){
+    .left-col{grid-template-columns:1fr 1fr 1fr;}
+  }
   @media(max-width:900px){.left-col{grid-template-columns:1fr}}
 
   .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px;box-shadow:var(--shadow)}
@@ -234,6 +232,32 @@
             <div style="font-size:0.7rem;color:var(--muted);margin-top:4px">High-volatility names can gap overnight or mid-session, bypassing stops.</div>
           </div>
         </div>
+
+        <div class="card trade-panel">
+          <h3>Trade Economics</h3>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
+            <div style="background:#0b0b0b;border:1px solid var(--border);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:6px">
+              <div style="font-size:0.7rem;color:var(--muted);text-transform:uppercase">Spread cost</div>
+              <div id="costSpread" style="font-size:1.1rem;font-weight:800;color:var(--red)">-$1.50</div>
+              <div style="font-size:0.68rem;color:var(--muted)">Bid-ask per round trip</div>
+            </div>
+            <div style="background:#0b0b0b;border:1px solid var(--border);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:6px">
+              <div style="font-size:0.7rem;color:var(--muted);text-transform:uppercase">Slippage + commission</div>
+              <div id="costSlip" style="font-size:1.1rem;font-weight:800;color:var(--red)">-$3.00</div>
+              <div style="font-size:0.68rem;color:var(--muted)">Fixed cost per trade</div>
+            </div>
+            <div style="background:#0b0b0b;border:1px solid var(--border);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:6px">
+              <div style="font-size:0.7rem;color:var(--muted);text-transform:uppercase">Total cost / trade</div>
+              <div id="costTotal" style="font-size:1.1rem;font-weight:800;color:var(--red)">-$4.50</div>
+              <div style="font-size:0.68rem;color:var(--muted)">Must overcome to profit</div>
+            </div>
+            <div style="background:#0b0b0b;border:1px solid var(--border);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:6px">
+              <div style="font-size:0.7rem;color:var(--muted);text-transform:uppercase">Break-even win rate</div>
+              <div id="breakEven" style="font-size:1.1rem;font-weight:800;color:var(--muted)">—%</div>
+              <div style="font-size:0.68rem;color:var(--muted)">Win % needed to cover costs</div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="stats" id="stats">
@@ -320,7 +344,7 @@ function $id(id){const e=document.getElementById(id);if(!e)console.warn('Missing
  'histChart','allEqChart','scatterChart','histBody','histEmpty',
  'runDetail','detailTitle','detailMeta','detailStats','detailEq','detailHourly',
  'detailTrades','detailSimPicker','tooltip','detailCharts',
- 'posSize','maxLoss','regimeDisp','volDisp'].forEach(k=>{els[k]=$id(k);});
+ 'posSize','maxLoss','regimeDisp','volDisp','costSpread','costSlip','costTotal','breakEven'].forEach(k=>{els[k]=$id(k);});
 
 let runs=[];
 let selectedRunId=null;
@@ -888,12 +912,30 @@ function updateTradeEstimate(){
 
   // Regime & risk panel live values
   const positionSize = p.capital * 0.05;
-  // Approximate worst-case per trade: 5% balance + 24% gap on position + spread + slippage + commission
+  // Trade economics
+  const spreadBps = MARKET.spreadBps / 10000; // 0.0012
+  const slipBps = MARKET.slippageBps / 10000; // 0.0008 per side, both sides = 0.0016
+  const spreadCost = positionSize * spreadBps;
+  const slippageCost = positionSize * slipBps * 2;
+  const commission = MARKET.commissionPerTrade;
+  const totalCost = spreadCost + slippageCost + commission;
   const gapMove = positionSize * 0.24;
-  const spreadSlippage = positionSize * (0.0012 + 0.0016); // spread bps + slippage bps both sides
-  const maxLoss = positionSize + gapMove + spreadSlippage + MARKET.commissionPerTrade;
+  const maxLoss = positionSize + gapMove + totalCost;
+
+  // Break-even win rate: need avg win such that (wr * avgWin) - ((1-wr) * avgLoss) - totalCost = 0
+  // With 5% position, if win, gain ~5% * 1.5 (RR varies) roughly; simplify: break-even wr = totalCost / (avgWin + totalCost) approx
+  // Using expected reward/risk from MARKET (rrMin 1.2, rrMax 2.6 -> avg ~1.9)
+  const avgRR = 1.9;
+  const riskDollars = positionSize;
+  const rewardDollars = riskDollars * avgRR;
+  const breakEvenWr = totalCost / (rewardDollars + totalCost) * 100;
+
   els.posSize.textContent = '$' + plain(positionSize);
   els.maxLoss.textContent = '-$' + plain(maxLoss);
+  els.costSpread.textContent = '-$' + plain(spreadCost);
+  els.costSlip.textContent = '-$' + plain(slippageCost + commission);
+  els.costTotal.textContent = '-$' + plain(totalCost);
+  els.breakEven.textContent = breakEvenWr.toFixed(1) + '%';
 
   // Simulated regime based on inputs (deterministic-ish, changes with capital/target)
   const seedVal = (p.capital * 0.001 + p.targetPerHour * 0.1) % 3;
