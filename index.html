@@ -258,6 +258,29 @@
             </div>
           </div>
         </div>
+
+        <div class="card market-hours-panel">
+          <h3>Real Market Hours (US)</h3>
+          <div style="margin-top:10px">
+            <div id="mktStatus" style="font-size:1.1rem;font-weight:800;color:var(--red)">Loading…</div>
+            <div id="mktTime" style="font-size:0.9rem;color:var(--muted);margin:4px 0"></div>
+            <div id="mktNextBell" style="font-size:0.85rem;color:var(--muted)"></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:12px">
+            <div style="background:#0b0b0b;border:1px solid var(--border);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:4px">
+              <div style="font-size:0.68rem;color:var(--muted);text-transform:uppercase">Pre-market</div>
+              <div style="font-size:0.9rem;font-weight:800;color:var(--muted)">4:00 AM – 9:30 AM ET</div>
+            </div>
+            <div style="background:#0b0b0b;border:1px solid var(--border);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:4px">
+              <div style="font-size:0.68rem;color:var(--muted);text-transform:uppercase">Regular session</div>
+              <div style="font-size:0.9rem;font-weight:800;color:var(--muted)">9:30 AM – 4:00 PM ET</div>
+            </div>
+            <div style="background:#0b0b0b;border:1px solid var(--border);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:4px">
+              <div style="font-size:0.68rem;color:var(--muted);text-transform:uppercase">After-hours</div>
+              <div style="font-size:0.9rem;font-weight:800;color:var(--muted)">4:00 PM – 8:00 PM ET</div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="stats" id="stats">
@@ -340,11 +363,11 @@ const STORAGE_KEY='stockbot_real_market_v1';
 const els={};
 function $id(id){const e=document.getElementById(id);if(!e)console.warn('Missing element: '+id);return e;}
 ['cap','targetPerHour','hours','secPerTrade','sims','btnRun','btnStop','btnClear','btnClearAll','runStatus',
- 'progressBar','progressWrap','sSuccess','sAvgEnd','sAvgHr','sRuin','sDD',
+ 'progressBar','progressWrap','tradeEstimate','sSuccess','sAvgEnd','sAvgHr','sRuin','sDD',
  'histChart','allEqChart','scatterChart','histBody','histEmpty',
  'runDetail','detailTitle','detailMeta','detailStats','detailEq','detailHourly',
  'detailTrades','detailSimPicker','tooltip','detailCharts',
- 'posSize','maxLoss','regimeDisp','volDisp','costSpread','costSlip','costTotal','breakEven'].forEach(k=>{els[k]=$id(k);});
+ 'posSize','maxLoss','regimeDisp','volDisp','costSpread','costSlip','costTotal','breakEven','mktStatus','mktTime','mktNextBell'].forEach(k=>{els[k]=$id(k);});
 
 let runs=[];
 let selectedRunId=null;
@@ -381,18 +404,19 @@ function fmtTime(ms){
 // Returns are fat-tailed, volatility mean-reverts, intraday U-shaped vol seasonality
 const MARKET = {
   // Annualized parameters — HIGH RISK / HIGH REWARD (volatile stock, crypto, penny stock)
-  drift: 0.15,          // 15% annual expected return (high upside potential)
-  vol: 0.80,            // 80% annual volatility (extreme price swings)
-  meanRevSpeed: 0.08,   // vol mean reversion speed (slow — vol persists, creating regimes)
+  drift: 0.15,          // 15% annual expected return
+  vol: 0.80,            // 80% annual volatility
+  meanRevSpeed: 0.50,   // vol mean reversion speed (FAST — vol moves noticeably each sim)
   longRunVol: 0.80,     // long-run vol
-  volOfVol: 0.80,       // volatility of volatility (extreme clustering — vol explodes and crashes)
+  volOfVol: 1.20,       // volatility of volatility (extreme clustering)
   minPrice: 0.50,       // price floor
-  spreadBps: 12,        // wide bid-ask spread on volatile names (0.12%)
-  commissionPerTrade: 2.00, // higher commission for high-turnover trading
-  slippageBps: 8,       // heavy slippage on illiquid/volatile names (both sides)
+  spreadBps: 12,
+  commissionPerTrade: 2.00,
+  slippageBps: 8,
   riskFreeRate: 0.045,
-  gapChance: 0.03,      // 3% chance per trade of an overnight/weekend gap
-  gapSize: 0.12         // average gap size (12% move)
+  gapChance: 0.03,
+  gapSize: 0.12,
+  regimeChangeEvery: 8 // trades per regime roll (frequent regime shifts)
 };
 
 function boxMuller(rng){
@@ -417,20 +441,32 @@ function simulatePricePath(p, rng){
   const dt = (p.secPerTrade/3600)/24/365; // years per trade step
   const dtHourly = p.secPerTrade/3600;    // hours per trade step
 
-  const minutesFromOpen = (()=>{
-    // Simulate starting at a random time; assume market open at minute 0
-    return 0;
-  })();
-
   let price = 100.0; // starting stock price
   let currentVol = MARKET.longRunVol;
   const prices=[price];
   const vols=[currentVol];
 
+  // Regime tracking: 0=bearish, 1=ranging, 2=bullish
+  let regime=1;
+  let regimeTimer=0;
+  const regimeTime={0:0,1:0,2:0};
+  regimeTime[1]++; // start in ranging
+
   for(let t=0;t<totalTrades;t++){
     // Intraday time (approximate)
     const minuteOfDay = (t * p.secPerTrade / 60) % 390;
     const intraMult = intradayVolMultiplier(minuteOfDay);
+
+    // Drift regime every MARKET.regimeChangeEvery trades
+    regimeTimer++;
+    if(regimeTimer>MARKET.regimeChangeEvery){
+      regimeTimer=0;
+      const r=rng();
+      if(regime===0) regime = r<0.5?0:1;
+      else if(regime===1) regime = r<0.33?0:(r<0.66?1:2);
+      else regime = r<0.5?1:2;
+    }
+    regimeTime[regime]++;
 
     // Stochastic volatility (CIR-like)
     const volDrift = MARKET.meanRevSpeed * (MARKET.longRunVol - currentVol) * dt;
@@ -456,7 +492,15 @@ function simulatePricePath(p, rng){
     prices.push(price);
     vols.push(currentVol);
   }
-  return {prices, vols, totalTrades, dtHourly};
+
+  // Average annualized vol across the path
+  const avgVol = vols.reduce((a,v)=>a+v,0)/vols.length;
+
+  // Dominant regime = regime with most time
+  const regimeNames=['BEARISH','RANGING','BULLISH'];
+  const dominantRegime = Object.keys(regimeTime).reduce((a,b)=>regimeTime[a]>regimeTime[b]?a:b,1);
+
+  return {prices, vols, totalTrades, dtHourly, avgVol, dominantRegime:parseInt(dominantRegime), regimeTime};
 }
 
 function simulateOne(p, rng){
@@ -518,7 +562,10 @@ function simulateOne(p, rng){
     equity,
     trades,
     prices: prices.slice(0, Math.min(prices.length, 200)), // store sample for detail
-    vols
+    vols,
+    avgVol: path.avgVol,
+    dominantRegime: path.dominantRegime,
+    regimeTime: path.regimeTime
   };
 }
 
@@ -793,6 +840,24 @@ function openRun(id){
     Success <span class="num ${r.successRate>=50?'pos':'neg'}">${r.successRate.toFixed(1)}%</span> •
     Avg <span class="num ${r.avgHr>=0?'pos':'neg'}">${money(r.avgHr)}/hr</span>
   `;
+  // Restore real regime & vol from stored run data
+  const regimeNames=['BEARISH','RANGING','BULLISH'];
+  const regimeColors=['var(--red)','var(--muted)','var(--green)'];
+  if(els.regimeDisp && r.dominantRegime!==undefined && r.domPct!==undefined){
+    els.regimeDisp.textContent=`${regimeNames[r.dominantRegime]} ${r.domPct}%`;
+    els.regimeDisp.style.color=regimeColors[r.dominantRegime];
+  } else if(els.regimeDisp && r.dominantRegime!==undefined){
+    els.regimeDisp.textContent=regimeNames[r.dominantRegime];
+    els.regimeDisp.style.color=regimeColors[r.dominantRegime];
+  }
+  if(els.volDisp && r.minVol!==undefined && r.maxVol!==undefined){
+    els.volDisp.textContent=`${(r.minVol*100).toFixed(0)}–${(r.maxVol*100).toFixed(0)}%`;
+    els.volDisp.style.color=r.avgVol>0.9?'var(--red)':(r.avgVol>0.6?'var(--muted)':'var(--green)');
+  } else if(els.volDisp && r.avgVol!==undefined){
+    els.volDisp.textContent=(r.avgVol*100).toFixed(0)+'%';
+    els.volDisp.style.color=r.avgVol>0.9?'var(--red)':(r.avgVol>0.6?'var(--muted)':'var(--green)');
+  }
+
   const results=runBatchSync(r.p, r.seed);
   renderRunDetail(results, r.p);
   renderHistory();
@@ -818,6 +883,12 @@ function renderRunDetail(results, p){
   const grossWins = results.reduce((a,r)=>a+r.trades.filter(t=>t.win).reduce((s,t)=>s+t.pnl,0),0);
   const grossLosses = results.reduce((a,r)=>a+r.trades.filter(t=>!t.win).reduce((s,t)=>s+t.pnl,0),0);
   const profitFactor = grossLosses !== 0 ? Math.abs(grossWins/grossLosses) : 0;
+  const regimeNames=['BEARISH','RANGING','BULLISH'];
+  const regimeColors=['var(--red)','var(--muted)','var(--green)'];
+  const avgRunVol=results.reduce((a,r)=>a+r.avgVol,0)/results.length;
+  const runRegimeTime={0:0,1:0,2:0};
+  results.forEach(r=>{Object.keys(r.regimeTime).forEach(k=>{runRegimeTime[parseInt(k)]+=r.regimeTime[k];});});
+  const runDomRegime=Object.keys(runRegimeTime).reduce((a,b)=>runRegimeTime[a]>runRegimeTime[b]?a:b,1);
 
   els.detailStats.innerHTML=`
     <div class="rd-stat"><div class="l">Success rate</div><div class="v ${successCount/results.length*100>=50?'pos':'neg'}">${(successCount/results.length*100).toFixed(1)}%</div></div>
@@ -828,6 +899,8 @@ function renderRunDetail(results, p){
     <div class="rd-stat"><div class="l">Trade win rate</div><div class="v neu">${winRate.toFixed(1)}%</div></div>
     <div class="rd-stat"><div class="l">Profit factor</div><div class="v ${profitFactor>=1?'pos':'neg'}">${profitFactor.toFixed(2)}</div></div>
     <div class="rd-stat"><div class="l">Total sims</div><div class="v neu">${results.length}</div></div>
+    <div class="rd-stat"><div class="l">Avg volatility</div><div class="v ${avgRunVol>0.9?'neg':(avgRunVol>0.6?'neu':'pos')}\">${(avgRunVol*100).toFixed(0)}%</div></div>
+    <div class="rd-stat"><div class="l">Dominant regime</div><div class="v ${regimeColors[runDomRegime]}\">${regimeNames[runDomRegime]}</div></div>
   `;
   els.detailSimPicker.innerHTML='';
   for(let s=0;s<results.length;s++){
@@ -856,7 +929,16 @@ function showSim(res, p){
     hourly[hr]=(hourly[hr]||0)+tr.pnl;
   });
   const hoursCount=Math.ceil(p.hours);
-  els.detailHourly.innerHTML='';
+  const regimeNames=['BEARISH','RANGING','BULLISH'];
+  const regimeColors=['var(--red)','var(--muted)','var(--green)'];
+  els.detailHourly.innerHTML=`
+    <div style="margin-bottom:8px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <div style="font-size:0.7rem;color:var(--muted);text-transform:uppercase">Sim volatility</div>
+      <div style="font-size:1rem;font-weight:800;color:${res.avgVol>0.9?'var(--red)':(res.avgVol>0.6?'var(--muted)':'var(--green)')}${(res.avgVol*100).toFixed(0)}%</div>
+      <div style="font-size:0.7rem;color:var(--muted);text-transform:uppercase">Sim regime</div>
+      <div style="font-size:1rem;font-weight:800;color:${regimeColors[res.dominantRegime]}">${regimeNames[res.dominantRegime]}</div>
+    </div>
+  `;
   for(let h=0;h<hoursCount;h++){
     const v=hourly[h]||0;
     const div=document.createElement('div');
@@ -913,8 +995,8 @@ function updateTradeEstimate(){
   // Regime & risk panel live values
   const positionSize = p.capital * 0.05;
   // Trade economics
-  const spreadBps = MARKET.spreadBps / 10000; // 0.0012
-  const slipBps = MARKET.slippageBps / 10000; // 0.0008 per side, both sides = 0.0016
+  const spreadBps = MARKET.spreadBps / 10000;
+  const slipBps = MARKET.slippageBps / 10000;
   const spreadCost = positionSize * spreadBps;
   const slippageCost = positionSize * slipBps * 2;
   const commission = MARKET.commissionPerTrade;
@@ -922,9 +1004,6 @@ function updateTradeEstimate(){
   const gapMove = positionSize * 0.24;
   const maxLoss = positionSize + gapMove + totalCost;
 
-  // Break-even win rate: need avg win such that (wr * avgWin) - ((1-wr) * avgLoss) - totalCost = 0
-  // With 5% position, if win, gain ~5% * 1.5 (RR varies) roughly; simplify: break-even wr = totalCost / (avgWin + totalCost) approx
-  // Using expected reward/risk from MARKET (rrMin 1.2, rrMax 2.6 -> avg ~1.9)
   const avgRR = 1.9;
   const riskDollars = positionSize;
   const rewardDollars = riskDollars * avgRR;
@@ -936,19 +1015,70 @@ function updateTradeEstimate(){
   els.costSlip.textContent = '-$' + plain(slippageCost + commission);
   els.costTotal.textContent = '-$' + plain(totalCost);
   els.breakEven.textContent = breakEvenWr.toFixed(1) + '%';
+}
 
-  // Simulated regime based on inputs (deterministic-ish, changes with capital/target)
-  const seedVal = (p.capital * 0.001 + p.targetPerHour * 0.1) % 3;
-  const regimes = ['RANGING', 'BULLISH', 'BEARISH'];
-  const regimeColors = ['var(--muted)', 'var(--green)', 'var(--red)'];
-  const regIdx = Math.floor(seedVal);
-  els.regimeDisp.textContent = regimes[regIdx];
-  els.regimeDisp.style.color = regimeColors[regIdx];
+function getETTime(){
+  const hour24 = new Intl.DateTimeFormat('en-US', {timeZone:'America/New_York', hour:'2-digit', hour12:false}).formatToParts(new Date()).find(p=>p.type==='hour').value;
+  const minute = new Intl.DateTimeFormat('en-US', {timeZone:'America/New_York', minute:'2-digit'}).formatToParts(new Date()).find(p=>p.type==='minute').value;
+  const second = new Intl.DateTimeFormat('en-US', {timeZone:'America/New_York', second:'2-digit'}).formatToParts(new Date()).find(p=>p.type==='second').value;
+  const dayPeriod = new Intl.DateTimeFormat('en-US', {timeZone:'America/New_York', hour12:true, hour:'numeric'}).formatToParts(new Date()).find(p=>p.type==='dayPeriod').value;
+  const weekday = new Date().toLocaleString('en-US', {timeZone:'America/New_York', weekday:'long'});
+  const monthDay = new Date().toLocaleString('en-US', {timeZone:'America/New_York', month:'short', day:'numeric'});
+  return {now:new Date(), hour:parseInt(hour24), minute:parseInt(minute), second:parseInt(second), weekday, monthDay,
+    timeString:(hour24%12||12)+':'+minute+':'+second+' '+dayPeriod};
+}
 
-  // Volatility estimate: annualized vol with clustering
-  const volEst = 0.80 * (0.7 + (p.hours / 24) * 0.3);
-  els.volDisp.textContent = volEst.toFixed(0) + '%';
-  els.volDisp.style.color = volEst > 90 ? 'var(--red)' : (volEst > 60 ? 'var(--muted)' : 'var(--green)');
+function updateMarketHours(){
+  try{
+    if(!els.mktStatus || !els.mktTime || !els.mktNextBell) return;
+    const et = getETTime();
+    const h = et.hour, m = et.minute;
+    const minutes = h*60 + m;
+    const isWeekend = et.weekday === 'Saturday' || et.weekday === 'Sunday';
+
+    const preOpen = 4*60;
+    const regOpen = 9*60+30;
+    const regClose = 16*60;
+    const afterClose = 20*60;
+
+    let status, statusColor, nextBell;
+
+    if(isWeekend){
+      status = 'CLOSED (Weekend)';
+      statusColor = 'var(--red)';
+      nextBell = 'Market reopens Monday 4:00 AM ET (pre-market)';
+    } else if(minutes < preOpen){
+      status = 'CLOSED (Pre-market starts 4:00 AM)';
+      statusColor = 'var(--red)';
+      const minsLeft = preOpen - minutes;
+      nextBell = 'Pre-market opens in ' + Math.floor(minsLeft/60) + 'h ' + (minsLeft%60) + 'm';
+    } else if(minutes < regOpen){
+      status = 'PRE-MARKET OPEN';
+      statusColor = 'var(--green)';
+      const minsLeft = regOpen - minutes;
+      nextBell = 'Regular session opens in ' + Math.floor(minsLeft/60) + 'h ' + (minsLeft%60) + 'm';
+    } else if(minutes < regClose){
+      status = 'MARKET OPEN';
+      statusColor = 'var(--green)';
+      const minsLeft = regClose - minutes;
+      nextBell = 'Regular session closes in ' + Math.floor(minsLeft/60) + 'h ' + (minsLeft%60) + 'm';
+    } else if(minutes < afterClose){
+      status = 'AFTER-HOURS OPEN';
+      statusColor = 'var(--green)';
+      const minsLeft = afterClose - minutes;
+      nextBell = 'After-hours closes in ' + Math.floor(minsLeft/60) + 'h ' + (minsLeft%60) + 'm';
+    } else {
+      status = 'CLOSED (After-hours ended 8:00 PM)';
+      statusColor = 'var(--red)';
+      const minsLeft = (24*60 - minutes) + preOpen;
+      nextBell = 'Pre-market opens in ' + Math.floor(minsLeft/60) + 'h ' + (minsLeft%60) + 'm';
+    }
+
+    els.mktStatus.textContent = status;
+    els.mktStatus.style.color = statusColor;
+    els.mktTime.textContent = et.weekday + ', ' + et.monthDay + '  •  ' + et.timeString + ' ET';
+    els.mktNextBell.textContent = nextBell;
+  }catch(e){console.error('updateMarketHours error:', e);}
 }
 
 function run(){
@@ -993,6 +1123,22 @@ function run(){
       drawScatter(els.scatterChart,results,p);
       setupCanvasClicks();
 
+      // Aggregate real regime and volatility from all simulations
+      const regimeNames=['BEARISH','RANGING','BULLISH'];
+      const regimeColors=['var(--red)','var(--muted)','var(--green)'];
+      const totalRegimeTime={0:0,1:0,2:0};
+      const allVols=[];
+      results.forEach(r=>{
+        allVols.push(r.avgVol);
+        Object.keys(r.regimeTime).forEach(k=>{totalRegimeTime[parseInt(k)]+=r.regimeTime[k];});
+      });
+      const totalTradesTime=Object.values(totalRegimeTime).reduce((a,b)=>a+b,0)||1;
+      const avgVol=allVols.reduce((a,b)=>a+b,0)/allVols.length;
+      const minVol=Math.min(...allVols);
+      const maxVol=Math.max(...allVols);
+      const dominantRegime=Object.keys(totalRegimeTime).reduce((a,b)=>totalRegimeTime[a]>totalRegimeTime[b]?a:b,1);
+      const domPct=((totalRegimeTime[dominantRegime]/totalTradesTime)*100).toFixed(0);
+
       const runRecord={
         id:Date.now().toString(36)+Math.random().toString(36).slice(2,4),
         when:new Date().toISOString(),
@@ -1000,11 +1146,28 @@ function run(){
         seed,
         successRate:summary.successRate,
         avgHr,
-        avgEnd
+        avgEnd,
+        avgVol,
+        dominantRegime:parseInt(dominantRegime),
+        domPct,
+        minVol,
+        maxVol
       };
       runs.unshift(runRecord);if(runs.length>50)runs.length=50;
       saveRuns();
       renderHistory();
+      updateTradeEstimate();
+
+      // Update regime panel with REAL simulation data
+      if(els.regimeDisp){
+        els.regimeDisp.textContent=`${regimeNames[dominantRegime]} ${domPct}%`;
+        els.regimeDisp.style.color=regimeColors[dominantRegime];
+      }
+      if(els.volDisp){
+        els.volDisp.textContent=`${(minVol*100).toFixed(0)}–${(maxVol*100).toFixed(0)}%`;
+        els.volDisp.style.color=avgVol>0.9?'var(--red)':(avgVol>0.6?'var(--muted)':'var(--green)');
+      }
+
       els.runStatus.textContent=`Completed ${p.sims.toLocaleString()} simulations — ${summary.successRate.toFixed(1)}% reached target`;
     })();
   }catch(e){
@@ -1086,7 +1249,12 @@ document.querySelectorAll('.chart-clear').forEach(btn=>{
 
 // ---------- INIT ----------
 runs=loadRuns();
+['posSize','maxLoss','regimeDisp','volDisp','costSpread','costSlip','costTotal','breakEven','mktStatus','mktTime','mktNextBell'].forEach(k=>{
+  if(!els[k]) console.warn('Missing element: '+k);
+});
 updateTradeEstimate();
+updateMarketHours();
+setInterval(updateMarketHours, 30000);
 renderHistory();
 console.log('Stock Bot Simulator initialized. runs=',runs.length);
 </script>
