@@ -1,0 +1,990 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stock Bot Simulator — Realistic Market Model</title>
+<style>
+  :root{
+    --bg:#0a0a0a;
+    --panel:#111111;
+    --panel-2:#161616;
+    --border:#222222;
+    --green:#00ff88;
+    --green-dark:#003d1f;
+    --red:#ff4d4d;
+    --text:#eaeaea;
+    --muted:#888888;
+    --shadow:0 10px 30px rgba(0,0,0,0.7);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    min-height:100vh;
+  }
+  .app{display:grid;grid-template-rows:auto 1fr auto;height:100%;max-height:100vh;overflow:hidden}
+  header{
+    background:#0a0a0a;border-bottom:1px solid var(--border);
+    padding:14px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px;
+  }
+  .brand{display:flex;align-items:center;gap:12px;font-size:1.15rem;font-weight:800;letter-spacing:0.5px}
+  .brand .dot{
+    width:10px;height:10px;border-radius:50%;background:var(--green);
+    box-shadow:0 0 14px var(--green);animation:pulse 2s infinite;
+  }
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.45}}
+  .tag{color:var(--muted);font-size:0.8rem;margin-left:6px}
+
+  main{padding:16px 24px;overflow:auto;display:flex;flex-direction:column;gap:16px}
+  h2{font-size:0.9rem;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px}
+
+  .shell{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto 1fr auto;gap:16px}
+  @media(min-width:1000px){
+    .shell{grid-template-columns:340px 1fr;grid-template-rows:auto 1fr auto;}
+    .shell>header{grid-column:1/-1;}
+  }
+
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px;box-shadow:var(--shadow)}
+  .card h3{font-size:0.85rem;color:var(--muted);margin-bottom:12px;text-transform:uppercase;letter-spacing:0.6px}
+
+  .controls{display:grid;grid-template-columns:1fr;gap:11px}
+  .row{display:flex;flex-direction:column;gap:6px}
+  .row label{font-size:0.8rem;color:var(--muted)}
+  .row input{
+    background:#0b0b0b;border:1px solid var(--border);color:var(--text);
+    padding:9px 11px;border-radius:8px;font-size:0.9rem
+  }
+  .row input:focus{outline:none;border-color:var(--green)}
+  .btns{display:flex;gap:8px;margin-top:4px}
+  button{
+    flex:1;border:none;border-radius:8px;padding:11px 12px;font-size:0.85rem;font-weight:800;
+    color:#000;cursor:pointer;background:var(--green)
+  }
+  button.secondary{background:#1a1a1a;color:var(--text);border:1px solid var(--border)}
+  button.secondary:hover{border-color:var(--green)}
+  button.danger{background:#1a1212;border-color:#3a2a2a;color:var(--red)}
+  button.danger:hover{border-color:var(--red);background:#261414}
+  button:disabled{opacity:0.5;cursor:not-allowed}
+  button.small{padding:7px 10px;font-size:0.75rem}
+
+  .progress-wrap{margin-top:8px;height:6px;background:#1a1a1a;border-radius:3px;overflow:hidden;border:1px solid var(--border);display:none}
+  .progress-bar{height:100%;background:var(--green);width:0%;transition:width 0.1s}
+
+  .stats{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,1fr);gap:11px;margin-bottom:6px}
+  @media(min-width:700px){.stats{grid-template-columns:repeat(5,1fr)}}
+  .stat{background:var(--panel-2);border:1px solid var(--border);border-radius:12px;padding:13px;display:flex;flex-direction:column;gap:4px}
+  .stat .v{font-size:1.55rem;font-weight:800;letter-spacing:-0.5px}
+  .stat .l{font-size:0.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px}
+  .stat .sub{font-size:0.68rem;color:var(--muted);margin-top:3px}
+  .stat .v.pos{color:var(--green)}
+  .stat .v.neg{color:var(--red)}
+  .stat .v.neu{color:var(--text)}
+  .stat-clear{
+    margin-left:auto;border:none;background:transparent;color:var(--muted);
+    font-size:0.7rem;font-weight:800;cursor:pointer;padding:2px 6px;border-radius:4px;border:1px solid var(--border)
+  }
+  .stat-clear:hover{color:var(--green);border-color:var(--green)}
+
+  .three{grid-column:1/-1;display:grid;grid-template-columns:1fr;gap:11px}
+  @media(min-width:1200px){.three{grid-template-columns:1fr 1fr 1fr}}
+  .chart-wrap{position:relative;background:var(--panel-2);border:1px solid var(--border);border-radius:12px;height:300px;min-height:200px;cursor:crosshair}
+  .chart-wrap canvas{width:100%;height:100%;display:block}
+  .chart-title{position:absolute;left:14px;top:10px;font-size:0.8rem;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:0.5px;z-index:2}
+  .chart-clear{
+    position:absolute;right:12px;top:10px;border:none;background:transparent;color:var(--muted);
+    font-size:0.7rem;font-weight:800;cursor:pointer;padding:4px 8px;border-radius:4px;border:1px solid var(--border);z-index:3
+  }
+  .chart-clear:hover{color:var(--green);border-color:var(--green)}
+  .chart-hint{position:absolute;left:14px;bottom:8px;font-size:0.7rem;color:var(--muted);z-index:2;background:#0a0a0a;padding:2px 6px;border-radius:4px;border:1px solid var(--border)}
+  .tooltip{
+    position:absolute;pointer-events:none;background:#1a1a1a;border:1px solid var(--border);color:#fff;
+    padding:6px 10px;border-radius:6px;font-size:0.75rem;white-space:nowrap;z-index:50;display:none;
+    box-shadow:var(--shadow)
+  }
+
+  .history{grid-column:1/-1}
+  .history .toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;flex-wrap:wrap}
+  table{width:100%;border-collapse:collapse;font-size:0.78rem;background:var(--panel-2);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  th{background:#171717;color:var(--muted);text-align:left;padding:9px 11px;font-size:0.7rem;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid var(--border)}
+  td{padding:9px 11px;border-bottom:1px solid var(--border);color:#c9c9c9}
+  tr:last-child td{border-bottom:none}
+  tr.clickable{background:#0c0c0c;cursor:pointer}
+  tr.clickable:hover{background:#141414}
+  tr.selected td{background:var(--green-dark);color:#000}
+  .num{font-variant-numeric:tabular-nums;color:#d9d9d9}
+  .num.pos{color:var(--green)}
+  .num.neg{color:var(--red)}
+  .actions{display:flex;gap:6px}
+  .view-btn{background:transparent;color:var(--green);border:1px solid var(--green);font-size:0.7rem;padding:4px 8px;border-radius:4px;cursor:pointer}
+  .view-btn:hover{background:var(--green);color:#000}
+
+  footer{background:#0a0a0a;border-top:1px solid var(--border);color:var(--muted);font-size:0.75rem;padding:10px 24px;text-align:center}
+  .small-note{font-size:0.72rem;color:var(--muted);margin-top:5px;line-height:1.4}
+  .empty{color:var(--muted);text-align:center;padding:40px;font-size:0.9rem}
+
+  .run-detail{background:var(--panel-2);border:1px solid var(--border);border-radius:10px;padding:0;margin-top:12px;overflow:hidden;display:none;animation:slideUp 0.2s ease-out}
+  @keyframes slideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+  .run-detail .rd-header{
+    background:var(--panel);border-bottom:1px solid var(--border);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px
+  }
+  .run-detail h4{font-size:0.85rem;color:var(--text);font-weight:800;letter-spacing:0.4px}
+  .run-detail .rd-sub{font-size:0.72rem;color:var(--mixed,#888)}
+  .run-detail .rd-close{background:transparent;color:var(--muted);border:1px solid var(--border);font-size:0.75rem;padding:6px 12px;border-radius:6px;cursor:pointer}
+  .run-detail .rd-close:hover{color:var(--green);border-color:var(--green)}
+
+  .rd-body{padding:14px 16px;display:grid;grid-template-columns:1fr;gap:12px}
+  @media(min-width:900px){.rd-body{grid-template-columns:1fr 1fr}}
+  .rd-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  @media(max-width:899px){.rd-stats{grid-template-columns:1fr 1fr}}
+  .rd-stat{background:#0b0b0b;border:1px solid var(--border);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:3px}
+  .rd-stat .l{font-size:0.68rem;color:var(--muted);text-transform:uppercase}
+  .rd-stat .v{font-size:1.1rem;font-weight:800}
+  .rd-picker{background:#0b0b0b;border:1px solid var(--border);border-radius:8px;padding:10px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .rd-picker label{font-size:0.72rem;color:var(--muted)}
+  .rd-picker select{background:#000;color:var(--text);border:1px solid var(--border);padding:6px 8px;border-radius:6px;font-size:0.8rem}
+
+  .rd-chart{background:#0b0b0b;border:1px solid var(--border);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:6px}
+  .rd-chart h5{font-size:0.75rem;color:var(--muted);text-transform:uppercase;margin:0}
+  .rd-chart canvas{flex:1}
+
+  .rd-table-wrap{border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:340px;display:flex;flex-direction:column}
+  .rd-table-wrap table{font-size:0.72rem;background:transparent}
+  .rd-table-wrap th{background:#171717;color:var(--muted);font-size:0.68rem;text-transform:uppercase;padding:8px 10px;text-align:left;border-bottom:1px solid var(--border)}
+  .rd-table-wrap td{padding:7px 10px;border-bottom:1px solid #1a1a1a;color:#c9c9c9}
+  .rd-table-wrap tr:hover td{background:#161616}
+  .rd-table-wrap .win{color:var(--green);font-weight:800}
+  .rd-table-wrap .loss{color:var(--red);font-weight:800}
+
+  .hourly-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}
+  .hourly-col{background:#0b0b0b;border:1px solid var(--border);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:4px}
+  .hourly-col .h{font-size:0.68rem;color:var(--muted);text-transform:uppercase}
+  .hourly-col .v{font-size:1.15rem;font-weight:800}
+  .hourly-col .v.pos{color:var(--green)}
+  .hourly-col .v.neg{color:var(--red)}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand">
+      <div class="dot"></div>
+      STOCK BOT SIMULATOR<span class="tag">• high risk / high reward • GBM + vol clustering + gaps</span>
+    </div>
+    <div id="runStatus" style="font-size:0.8rem;color:var(--muted)">Idle</div>
+  </header>
+  <main>
+    <div class="shell">
+
+      <div class="card controls">
+        <h3>Simulation inputs</h3>
+        <div class="controls">
+          <div class="row"><label>Starting capital ($)</label><input type="number" id="cap" value="10000" step="100"></div>
+          <div class="row"><label>Target profit ($ per hour)</label><input type="number" id="targetPerHour" value="500" step="50"></div>
+          <div class="row"><label>Time to trade (hours)</label><input type="number" id="hours" value="6.5" step="0.5" min="0.1"></div>
+          <div class="row"><label>Seconds per trade</label><input type="number" id="secPerTrade" value="300" step="30" min="30"></div>
+          <div class="row"><label>Simulations to run</label><input type="number" id="sims" value="200" step="50" min="50" max="1000"></div>
+          <div class="small-note" id="tradeEstimate">~0 trades total</div>
+          <div class="small-note">HIGH RISK / HIGH REWARD: 80% annual vol, 5% position sizing per trade, gap risk (±12–24% jumps), wide spreads &amp; slippage. Win rate emerges from price action — not forced.</div>
+          <div class="btns">
+            <button id="btnRun">RUN SIMULATIONS</button>
+            <button id="btnStop" style="background:#1a1212;border-color:#3a2a2a;color:var(--red);display:none">STOP</button>
+            <button id="btnClear" class="secondary small">CLEAR HISTORY</button>
+          </div>
+          <div class="progress-wrap" id="progressWrap"><div class="progress-bar" id="progressBar"></div></div>
+        </div>
+      </div>
+
+      <div class="stats" id="stats">
+        <div class="stat"><div class="l">Success rate</div><div class="v neu" id="sSuccess">—%</div><button class="stat-clear" data-stat="success">CLR</button><div class="sub">sims that reached $/hr target</div></div>
+        <div class="stat"><div class="l">Avg ending balance</div><div class="v neu" id="sAvgEnd">$0</div><button class="stat-clear" data-stat="avgEnd">CLR</button><div class="sub">across all sims</div></div>
+        <div class="stat"><div class="l">Avg profit / hour</div><div class="v neu" id="sAvgHr">$0.00</div><button class="stat-clear" data-stat="avgHr">CLR</button><div class="sub">realized per hour</div></div>
+        <div class="stat"><div class="l">Ruin rate</div><div class="v neu" id="sRuin">—%</div><button class="stat-clear" data-stat="ruin">CLR</button><div class="sub">hit $0 balance</div></div>
+        <div class="stat"><div class="l">Avg max drawdown</div><div class="v neu" id="sDD">$0</div><button class="stat-clear" data-stat="dd">CLR</button><div class="sub">peak-to-trough</div></div>
+      </div>
+
+      <div class="three">
+        <section class="card">
+          <h3>Outcome distribution</h3>
+          <div class="chart-wrap"><div class="chart-title">Ending profit per simulation</div><button class="chart-clear" data-chart="hist">CLR</button><div class="chart-hint">Click a bar → see sims in that range</div><canvas id="histChart"></canvas></div>
+        </section>
+        <section class="card">
+          <h3>Profit over time (all runs)</h3>
+          <div class="chart-wrap"><div class="chart-title">Cumulative profit by trade across simulations</div><button class="chart-clear" data-chart="allEq">CLR</button><div class="chart-hint">Click a line → inspect that simulation</div><canvas id="allEqChart"></canvas></div>
+        </section>
+        <section class="card">
+          <h3>Trade scatter</h3>
+          <div class="chart-wrap"><div class="chart-title">Every trade: profit vs time</div><button class="chart-clear" data-chart="scatter">CLR</button><div class="chart-hint">Click a dot → see that trade</div><canvas id="scatterChart"></canvas></div>
+        </section>
+      </div>
+
+      <section class="card history">
+        <div class="toolbar">
+          <h3>Previous runs</h3>
+          <div style="display:flex;gap:6px"><button id="btnClearAll" class="secondary small">CLEAR ALL</button></div>
+        </div>
+        <table id="histTable">
+          <thead><tr><th>When</th><th>Start ($)</th><th>Target $/hr</th><th>Hours</th><th>Secs/trade</th><th>Success</th><th>Avg $/hr</th><th>Sims</th><th></th></tr></thead>
+          <tbody id="histBody"></tbody>
+        </table>
+        <div id="histEmpty" class="empty">No runs yet. Set your inputs and run simulations.</div>
+      </section>
+
+      <div class="run-detail" id="runDetail">
+        <div class="rd-header">
+          <div><h4 id="detailTitle">Run details</h4><div id="detailMeta" class="rd-sub"></div></div>
+          <button id="btnCloseDetail" class="rd-close">CLOSE</button>
+        </div>
+        <div class="rd-body">
+          <div class="rd-stats" id="detailStats"></div>
+          <div class="rd-picker"><label>Inspect simulation</label><select id="detailSimPicker"></select></div>
+          <div class="three" id="detailCharts" style="gap:8px">
+            <div class="rd-chart"><h5>Equity curve</h5><canvas id="detailEq" height="180"></canvas></div>
+            <div class="rd-chart" style="grid-column:1/-1"><h5>Hourly P&L</h5><div id="detailHourly" class="hourly-grid"></div></div>
+          </div>
+          <div class="rd-table-wrap">
+            <table>
+              <thead><tr><th>Trade</th><th>Time</th><th>Entry $</th><th>Exit $</th><th>P&L ($)</th><th>Result</th></tr></thead>
+              <tbody id="detailTrades"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+  <footer>
+    Simulation only. Synthetic market model, not real market data. Not financial advice — simulated results do not predict real trading performance.
+  </footer>
+  <div class="tooltip" id="tooltip"></div>
+</div>
+
+<script>
+// ---------- Seeded PRNG ----------
+function xorshift32(seed){
+  return function(){
+    seed ^= seed << 13;
+    seed ^= seed >>> 17;
+    seed ^= seed << 5;
+    return (seed >>> 0) / 0xFFFFFFFF;
+  };
+}
+
+const STORAGE_KEY='stockbot_real_market_v1';
+
+const els={};
+function $id(id){const e=document.getElementById(id);if(!e)console.warn('Missing element: '+id);return e;}
+['cap','targetPerHour','hours','secPerTrade','sims','btnRun','btnStop','btnClear','btnClearAll','runStatus',
+ 'progressBar','progressWrap','sSuccess','sAvgEnd','sAvgHr','sRuin','sDD',
+ 'histChart','allEqChart','scatterChart','histBody','histEmpty',
+ 'runDetail','detailTitle','detailMeta','detailStats','detailEq','detailHourly',
+ 'detailTrades','detailSimPicker','tooltip','detailCharts'].forEach(k=>{els[k]=$id(k);});
+
+let runs=[];
+let selectedRunId=null;
+let selectedSimIndex=0;
+let stopFlag=false;
+let histBins=[], scatterPoints=[], eqLines=[];
+
+function loadRuns(){try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]')||[]}catch(e){return[]}}
+function saveRuns(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(runs))}catch(e){}}
+
+function readParams(){
+  return {
+    capital:parseFloat(els.cap.value)||0,
+    targetPerHour:parseFloat(els.targetPerHour.value)||0,
+    hours:parseFloat(els.hours.value)||1,
+    secPerTrade:parseFloat(els.secPerTrade.value)||300,
+    sims:parseInt(els.sims.value)||200
+  };
+}
+function money(x,dec=2){
+  const n=Math.abs(x).toFixed(dec);
+  return (x<0?'-$':'+$')+n.replace(/\B(?=(\d{3})+(?!\d))/g,',');
+}
+function plain(x,dec=2){
+  return Math.abs(x).toFixed(dec).replace(/\B(?=(\d{3})+(?!\d))/g,',');
+}
+function fmtTime(ms){
+  const d=new Date(ms);
+  return d.getUTCHours().toString().padStart(2,'0')+':'+d.getUTCMinutes().toString().padStart(2,'0')+':'+d.getUTCSeconds().toString().padStart(2,'0');
+}
+
+// ---------- Realistic market model ----------
+// Price follows Geometric Brownian Motion with stochastic volatility (vol clustering)
+// Returns are fat-tailed, volatility mean-reverts, intraday U-shaped vol seasonality
+const MARKET = {
+  // Annualized parameters — HIGH RISK / HIGH REWARD (volatile stock, crypto, penny stock)
+  drift: 0.15,          // 15% annual expected return (high upside potential)
+  vol: 0.80,            // 80% annual volatility (extreme price swings)
+  meanRevSpeed: 0.08,   // vol mean reversion speed (slow — vol persists, creating regimes)
+  longRunVol: 0.80,     // long-run vol
+  volOfVol: 0.80,       // volatility of volatility (extreme clustering — vol explodes and crashes)
+  minPrice: 0.50,       // price floor
+  spreadBps: 12,        // wide bid-ask spread on volatile names (0.12%)
+  commissionPerTrade: 2.00, // higher commission for high-turnover trading
+  slippageBps: 8,       // heavy slippage on illiquid/volatile names (both sides)
+  riskFreeRate: 0.045,
+  gapChance: 0.03,      // 3% chance per trade of an overnight/weekend gap
+  gapSize: 0.12         // average gap size (12% move)
+};
+
+function boxMuller(rng){
+  // Standard normal from two uniforms
+  const u1=rng(), u2=rng();
+  const z0=Math.sqrt(-2*Math.log(u1))*Math.cos(2*Math.PI*u2);
+  return z0;
+}
+
+function intradayVolMultiplier(minuteOfDay){
+  // U-shaped: higher vol at open (minute 0-60) and close (minute 330-390), lower midday
+  // minuteOfDay: 0 = market open (9:30), 390 = market close (16:00)
+  const m = minuteOfDay;
+  if(m < 60) return 1.6;      // opening volatility
+  if(m > 330) return 1.4;     // closing volatility
+  return 0.75;                // midday lull
+}
+
+function simulatePricePath(p, rng){
+  // Generate price path at the trade frequency (seconds per trade)
+  const totalTrades=Math.max(1,Math.floor(p.hours*3600/p.secPerTrade));
+  const dt = (p.secPerTrade/3600)/24/365; // years per trade step
+  const dtHourly = p.secPerTrade/3600;    // hours per trade step
+
+  const minutesFromOpen = (()=>{
+    // Simulate starting at a random time; assume market open at minute 0
+    return 0;
+  })();
+
+  let price = 100.0; // starting stock price
+  let currentVol = MARKET.longRunVol;
+  const prices=[price];
+  const vols=[currentVol];
+
+  for(let t=0;t<totalTrades;t++){
+    // Intraday time (approximate)
+    const minuteOfDay = (t * p.secPerTrade / 60) % 390;
+    const intraMult = intradayVolMultiplier(minuteOfDay);
+
+    // Stochastic volatility (CIR-like)
+    const volDrift = MARKET.meanRevSpeed * (MARKET.longRunVol - currentVol) * dt;
+    const volDiffusion = MARKET.volOfVol * currentVol * Math.sqrt(dt) * boxMuller(rng);
+    currentVol += volDrift + volDiffusion;
+    if(currentVol < 0.02) currentVol = 0.02;
+    if(currentVol > 1.5) currentVol = 1.5;
+
+    // GBM price step with current vol
+    const shock = boxMuller(rng);
+    let logReturn = (MARKET.drift - 0.5*currentVol*currentVol)*dt + currentVol*Math.sqrt(dt)*shock;
+
+    // Gap risk — sudden overnight/weekend jumps (high risk / high reward)
+    if(rng() < MARKET.gapChance){
+      const gapDir = rng() < 0.5 ? -1 : 1;
+      const gapMag = MARKET.gapSize * (0.5 + rng()); // 12%–24% gap
+      logReturn += gapDir * gapMag;
+    }
+
+    price = price * Math.exp(logReturn);
+    if(price < MARKET.minPrice) price = MARKET.minPrice;
+
+    prices.push(price);
+    vols.push(currentVol);
+  }
+  return {prices, vols, totalTrades, dtHourly};
+}
+
+function simulateOne(p, rng){
+  const path = simulatePricePath(p, rng);
+  const {prices, vols, totalTrades, dtHourly} = path;
+
+  let balance=p.capital;
+  let peak=p.capital;
+  let maxDD=0;
+  let reachedTarget=false;
+  let ruined=false;
+  const equity=[balance];
+  const trades=[];
+
+  const targetBalance = p.capital + p.targetPerHour * p.hours;
+
+  // Position size: fixed % of balance per trade (HIGH RISK — 5% per trade)
+  const riskPct = 0.05; // 5% of balance per trade
+
+  for(let t=0;t<totalTrades;t++){
+    const entryPrice = prices[t];
+    const exitPrice = prices[t+1];
+
+    // Random direction: long or short (bot has no edge, just market exposure)
+    const direction = rng() < 0.5 ? 1 : -1;
+
+    // Shares based on % of balance
+    const notional = balance * riskPct;
+    const shares = notional / entryPrice;
+
+    // Costs: spread (half on entry, half on exit) + commission + slippage
+    const spreadCost = entryPrice * (MARKET.spreadBps/10000) * shares; // half spread entry + exit = full spread
+    const slippageCost = entryPrice * (MARKET.slippageBps/10000) * shares * 2; // both sides
+    const commission = MARKET.commissionPerTrade;
+
+    // Gross P&L
+    const grossPnL = direction * (exitPrice - entryPrice) * shares;
+
+    // Net P&L after costs
+    const pnl = grossPnL - spreadCost - slippageCost - commission;
+
+    balance += pnl;
+    if(balance > peak) peak = balance;
+    const dd = peak - balance;
+    if(dd > maxDD) maxDD = dd;
+    if(balance >= targetBalance) reachedTarget = true;
+    if(balance <= 0){ balance = 0; ruined = true; trades.push({t:t*p.secPerTrade*1000, entry:entryPrice, exit:exitPrice, pnl, balance, win:false, ruined:true, direction}); break; }
+
+    trades.push({t:t*p.secPerTrade*1000, entry:entryPrice, exit:exitPrice, pnl, balance, win:pnl>0, direction});
+    equity.push(balance);
+  }
+
+  return {
+    endBalance: balance,
+    profit: balance - p.capital,
+    reachedTarget,
+    maxDD,
+    ruined,
+    equity,
+    trades,
+    prices: prices.slice(0, Math.min(prices.length, 200)), // store sample for detail
+    vols
+  };
+}
+
+let targetBalanceInternal=0;
+
+async function runBatchAsync(p, seed, onProgress){
+  const rng=xorshift32(seed);
+  const results=[];
+  const total=p.sims;
+  const chunkSize=200;
+  stopFlag=false;
+  for(let i=0;i<total && !stopFlag;i+=chunkSize){
+    const end=Math.min(i+chunkSize,total);
+    for(let j=i;j<end && !stopFlag;j++){
+      results.push(simulateOne(p,rng));
+    }
+    onProgress(end/total);
+    await new Promise(res=>setTimeout(res,0));
+  }
+  return results;
+}
+
+function renderHistory(){
+  const body=els.histBody;body.innerHTML='';
+  if(!runs.length){els.histEmpty.style.display='block';return}
+  els.histEmpty.style.display='none';
+  runs.slice().sort((a,b)=>new Date(b.when)-new Date(a.when)).forEach(r=>{
+    const tr=document.createElement('tr');
+    tr.className='clickable'+(selectedRunId===r.id?' selected':'');
+    tr.style.cursor='pointer';
+    tr.innerHTML=`
+      <td>${new Date(r.when).toLocaleString()}</td>
+      <td class="num">${plain(r.p.capital)}</td>
+      <td class="num $/hr">${plain(r.p.targetPerHour)}</td>
+      <td class="num">${r.p.hours}</td>
+      <td class="num">${r.p.secPerTrade}</td>
+      <td class="num ${r.successRate>=50?'pos':'neg'}">${r.successRate.toFixed(1)}%</td>
+      <td class="num ${r.avgHr>=0?'pos':'neg'}">${money(r.avgHr)}</td>
+      <td class="num">${r.p.sims}</td>
+      <td class="actions"><button class="view-btn">VIEW</button><button class="small danger">DEL</button></td>
+    `;
+    const viewBtn=tr.querySelector('.view-btn');
+    const delBtn=tr.querySelector('.danger');
+    viewBtn.onclick=(e)=>{e.stopPropagation();openRun(r.id);};
+    delBtn.onclick=(e)=>{e.stopPropagation();delRun(r.id);};
+    tr.onclick=()=>openRun(r.id);
+    body.appendChild(tr);
+  });
+}
+
+function drawHistogram(canvas,results){
+  const ctx=canvas.getContext('2d');const dpr=window.devicePixelRatio||1;
+  const cs=getComputedStyle(canvas);canvas.width=parseInt(cs.width)*dpr;canvas.height=parseInt(cs.height)*dpr;ctx.scale(dpr,dpr);
+  const w=canvas.clientWidth,h=canvas.clientHeight;const pad=34;
+  ctx.clearRect(0,0,w,h);
+  const profits=results.map(r=>r.profit);
+  if(!profits.length){ctx.fillStyle='#666';ctx.font='12px sans-serif';ctx.textAlign='center';ctx.fillText('No data',w/2,h/2);return}
+  ctx.strokeStyle='#1a1a1a';ctx.lineWidth=1;ctx.beginPath();
+  for(let i=0;i<=5;i++){const y=pad+(h-2*pad)*(i/5);ctx.moveTo(pad,y);ctx.lineTo(w-pad,y)}ctx.stroke();
+  const min=Math.min(...profits),max=Math.max(...profits);
+  const range=max-min||1;
+  const bins=24;const counts=new Array(bins).fill(0);
+  profits.forEach(v=>{const bi=Math.min(bins-1,Math.floor(((v-min)/range)*bins));counts[bi]++});
+  const maxCount=Math.max(...counts);
+  ctx.font='10px sans-serif';ctx.fillStyle='#666';ctx.textAlign='right';
+  ctx.fillText(maxCount.toLocaleString(),w-pad,pad+10);
+  ctx.fillText('0',w-pad,h-pad-4);
+  const bw=(w-2*pad)/bins*0.8;
+  histBins=[];
+  counts.forEach((c,i)=>{
+    const x0=pad+i*((w-2*pad)/bins)+((w-2*pad)/bins-bw)/2;
+    const x1=x0+bw;
+    const y=h-pad-(c/maxCount)*(h-2*pad);
+    ctx.fillStyle= (min+((i+0.5)/bins)*range >=0)?'#00ff88':'#ff4d4d';
+    ctx.fillRect(x0,y,bw,h-pad-y);
+    histBins.push({x0,x1,y0:y,y1:h-pad,minProfit:min+(i/bins)*range,maxProfit:min+((i+1)/bins)*range,count:c});
+  });
+  const zeroIdx=Math.round(((0-min)/range)*bins);
+  if(zeroIdx>=0 && zeroIdx<bins){
+    const x0=pad+zeroIdx*((w-2*pad)/bins);
+    ctx.strokeStyle='#2a2a2a';ctx.lineWidth=1;ctx.setLineDash([5,5]);
+    ctx.beginPath();ctx.moveTo(x0,pad);ctx.lineTo(x0,h-pad);ctx.stroke();ctx.setLineDash([]);
+  }
+  ctx.textAlign='center';ctx.fillStyle='#666';ctx.font='10px sans-serif';
+  ctx.fillText('loss',pad+40,h-pad+14);
+  ctx.fillText('profit',w-pad-40,h-pad+14);
+}
+
+function drawAllEquity(canvas,results){
+  const ctx=canvas.getContext('2d');const dpr=window.devicePixelRatio||1;
+  const cs=getComputedStyle(canvas);canvas.width=parseInt(cs.width)*dpr;canvas.height=parseInt(cs.height)*dpr;ctx.scale(dpr,dpr);
+  const w=canvas.clientWidth,h=canvas.clientHeight;const pad=30;
+  ctx.clearRect(0,0,w,h);
+  ctx.strokeStyle='#1a1a1a';ctx.lineWidth=1;ctx.beginPath();
+  for(let i=0;i<=5;i++){const y=pad+(h-2*pad)*(i/5);ctx.moveTo(pad,y);ctx.lineTo(w-pad,y)}ctx.stroke();
+  const all=[];
+  results.forEach(r=>{r.equity.forEach(v=>all.push(v))});
+  if(!all.length){ctx.fillStyle='#666';ctx.font='12px sans-serif';ctx.textAlign='center';ctx.fillText('No data',w/2,h/2);return}
+  const mn=Math.min(...all),mx=Math.max(...all);
+  ctx.font='10px sans-serif';ctx.fillStyle='#666';ctx.textAlign='right';
+  ctx.fillText(mx.toFixed(0),w-pad,pad+10);
+  ctx.fillText(mn.toFixed(0),w-pad,h-pad-4);
+  const y0=h-pad-(0-mn)/(mx-mn||1)*(h-2*pad);
+  if(y0>=pad&&y0<=h-pad){ctx.strokeStyle='#2a2a2a';ctx.lineWidth=1;ctx.setLineDash([5,5]);ctx.beginPath();ctx.moveTo(pad,y0);ctx.lineTo(w-pad,y0);ctx.stroke();ctx.setLineDash([])}
+  eqLines=[];
+  results.slice(0,80).forEach((r,ri)=>{
+    const eq=r.equity;if(eq.length<2)return;
+    const pts=[];
+    ctx.beginPath();
+    eq.forEach((v,i)=>{
+      const x=pad+(i/(eq.length-1))*(w-2*pad);
+      const y=h-pad-(v-mn)/(mx-mn||1)*(h-2*pad);
+      pts.push({x,y,v});
+      if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+    });
+    ctx.strokeStyle=eq[eq.length-1]>=eq[0]?'rgba(0,255,136,0.18)':'rgba(255,77,77,0.18)';
+    ctx.globalAlpha=0.7;ctx.lineWidth=1.2;ctx.stroke();ctx.globalAlpha=1;
+    eqLines.push({simIndex:ri,points:pts,endBalance:eq[eq.length-1],profit:r.profit});
+  });
+}
+
+function drawScatter(canvas,results,p){
+  const ctx=canvas.getContext('2d');const dpr=window.devicePixelRatio||1;
+  const cs=getComputedStyle(canvas);canvas.width=parseInt(cs.width)*dpr;canvas.height=parseInt(cs.height)*dpr;ctx.scale(dpr,dpr);
+  const w=canvas.clientWidth,h=canvas.clientHeight;const pad=44;
+  ctx.clearRect(0,0,w,h);
+  const points=[];
+  results.forEach((r,sIdx)=>{
+    r.trades.forEach((tr,ti)=>{
+      points.push({s:sIdx,t:tr.t,pnl:tr.pnl,balance:tr.balance,win:tr.win,ti,entry:tr.entry,exit:tr.exit});
+    });
+  });
+  if(!points.length){ctx.fillStyle='#666';ctx.font='12px sans-serif';ctx.textAlign='center';ctx.fillText('No trades',w/2,h/2);return}
+  const maxT=Math.max(...points.map(pt=>pt.t));
+  const pnls=points.map(pt=>pt.pnl);
+  const mn=Math.min(...pnls),mx=Math.max(...pnls);
+  const range=mx-mn||1;
+  ctx.strokeStyle='#1a1a1a';ctx.lineWidth=1;ctx.beginPath();
+  for(let i=0;i<=5;i++){const y=pad+(h-2*pad)*(i/5);ctx.moveTo(pad,y);ctx.lineTo(w-pad,y)}ctx.stroke();
+  ctx.font='10px sans-serif';ctx.fillStyle='#666';ctx.textAlign='right';
+  ctx.fillText(mx.toFixed(0),w-pad,pad+10);
+  ctx.fillText(mn.toFixed(0),w-pad,h-pad-4);
+  ctx.fillText('0',pad-6,h-pad+4);
+  const y0=h-pad-(0-mn)/range*(h-2*pad);
+  if(y0>=pad&&y0<=h-pad){ctx.strokeStyle='#2a2a2a';ctx.lineWidth=1;ctx.setLineDash([5,5]);ctx.beginPath();ctx.moveTo(pad,y0);ctx.lineTo(w-pad,y0);ctx.stroke();ctx.setLineDash([])}
+  scatterPoints=[];
+  const step=Math.max(1,Math.floor(points.length/2000));
+  for(let i=0;i<points.length;i+=step){
+    const pt=points[i];
+    const x=pad+(pt.t/maxT)*(w-2*pad);
+    const y=h-pad-(pt.pnl-mn)/range*(h-2*pad);
+    ctx.fillStyle=pt.pnl>=0?'#00ff88':'#ff4d4d';
+    ctx.globalAlpha=0.5;
+    ctx.beginPath();ctx.arc(x,y,1.6,0,Math.PI*2);ctx.fill();
+    ctx.globalAlpha=1;
+    scatterPoints.push({x,y,simIndex:pt.s,tradeIndex:pt.ti,pnl:pt.pnl,time:pt.t,balance:pt.balance,win:pt.win,entry:pt.entry,exit:pt.exit});
+  }
+  ctx.fillStyle='#666';ctx.textAlign='center';ctx.font='10px sans-serif';
+  ctx.fillText('time →',w/2,h-6);
+  ctx.save();ctx.translate(10,h/2);ctx.rotate(-Math.PI/2);ctx.fillText('profit →',0,0);ctx.restore();
+}
+
+function updateStats(summary){
+  const s=summary;
+  els.sSuccess.textContent=s.successRate.toFixed(1)+'%';
+  els.sSuccess.className='v '+(s.successRate>=50?'pos':'neg');
+  els.sAvgEnd.textContent=(s.avgEnd>=0?'$':'-$')+plain(s.avgEnd);
+  els.sAvgEnd.className='v '+(s.avgEnd>=0?'pos':'neg');
+  els.sAvgHr.textContent=money(s.avgHr);
+  els.sAvgHr.className='v '+(s.avgHr>=0?'pos':'neg');
+  els.sRuin.textContent=s.ruinRate.toFixed(1)+'%';
+  els.sRuin.className='v '+(s.ruinRate>0?'neg':'neu');
+  els.sDD.textContent=(s.avgDD>=0?'$':'-$')+plain(s.avgDD);
+  els.sDD.className='v neg';
+}
+
+function showTooltip(x,y,html){
+  const t=els.tooltip;
+  t.innerHTML=html;
+  t.style.display='block';
+  t.style.left=(x+14)+'px';
+  t.style.top=(y+14)+'px';
+}
+function hideTooltip(){els.tooltip.style.display='none';}
+
+function setupCanvasClicks(){
+  els.histChart.onclick=e=>{
+    const rect=els.histChart.getBoundingClientRect();
+    const x=e.clientX-rect.left, y=e.clientY-rect.top;
+    const hit=histBins.find(b=>x>=b.x0&&x<=b.x1&&y>=b.y0&&y<=b.y1);
+    if(hit){
+      showTooltip(x,y,`<div style="font-size:0.7rem;color:var(--muted);text-transform:uppercase">histogram bin</div>
+        <div style="font-size:0.8rem;font-weight:800">$${hit.minProfit.toFixed(0)} to $${hit.maxProfit.toFixed(0)}</div>
+        <div style="font-size:0.75rem;color:var(--green)">Sims in range: ${hit.count}</div>`);
+    } else hideTooltip();
+  };
+  els.histChart.onmousemove=e=>{
+    const rect=els.histChart.getBoundingClientRect();
+    const x=e.clientX-rect.left, y=e.clientY-rect.top;
+    const hit=histBins.find(b=>x>=b.x0&&x<=b.x1&&y>=b.y0&&y<=b.y1);
+    els.histChart.style.cursor=hit?'pointer':'crosshair';
+  };
+  els.histChart.onmouseleave=hideTooltip;
+
+  els.scatterChart.onclick=e=>{
+    const rect=els.scatterChart.getBoundingClientRect();
+    const x=e.clientX-rect.left, y=e.clientY-rect.top;
+    let best=null,bestD=1e9;
+    scatterPoints.forEach(pt=>{
+      const d=Math.hypot(pt.x-x,pt.y-y);
+      if(d<bestD&&d<14){bestD=d;best=pt;}
+    });
+    if(best){
+      showTooltip(x,y,`<div style="font-size:0.7rem;color:var(--muted);text-transform:uppercase">trade #${best.tradeIndex+1}</div>
+        <div style="font-size:0.8rem;font-weight:800">$${best.pnl>=0?'+':''}${best.pnl.toFixed(2)}</div>
+        <div style="font-size:0.75rem">${fmtTime(best.time)} • entry $${plain(best.entry)} → exit $${plain(best.exit)} • ${best.win?'WIN':'LOSS'}</div>
+        <div style="font-size:0.7rem;color:var(--muted);margin-top:4px">Open run to inspect</div>`);
+    } else hideTooltip();
+  };
+  els.scatterChart.onmousemove=e=>{
+    const rect=els.scatterChart.getBoundingClientRect();
+    const x=e.clientX-rect.left, y=e.clientY-rect.top;
+    let best=null,bestD=1e9;
+    scatterPoints.forEach(pt=>{
+      const d=Math.hypot(pt.x-x,pt.y-y);
+      if(d<bestD&&d<14){bestD=d;best=pt;}
+    });
+    els.scatterChart.style.cursor=best?'pointer':'crosshair';
+  };
+  els.scatterChart.onmouseleave=hideTooltip;
+
+  els.allEqChart.onclick=e=>{
+    const rect=els.allEqChart.getBoundingClientRect();
+    const x=e.clientX-rect.left, y=e.clientY-rect.top;
+    let best=null,bestD=1e9;
+    eqLines.forEach(line=>{
+      line.points.forEach(pt=>{
+        const d=Math.hypot(pt.x-x,pt.y-y);
+        if(d<bestD&&d<10){bestD=d;best=line;}
+      });
+    });
+    if(best){
+      showTooltip(x,y,`<div style="font-size:0.7rem;color:var(--muted);text-transform:uppercase">simulation #${best.simIndex+1}</div>
+        <div style="font-size:0.8rem;font-weight:800">end $${plain(best.endBalance)}</div>
+        <div style="font-size:0.75rem">profit $${best.profit>=0?'+':''}${best.profit.toFixed(2)}</div>`);
+    } else hideTooltip();
+  };
+  els.allEqChart.onmousemove=e=>{
+    const rect=els.allEqChart.getBoundingClientRect();
+    const x=e.clientX-rect.left, y=e.clientY-rect.top;
+    let hit=false;
+    eqLines.forEach(line=>{
+      line.points.forEach(pt=>{
+        if(Math.hypot(pt.x-x,pt.y-y)<10)hit=true;
+      });
+    });
+    els.allEqChart.style.cursor=hit?'pointer':'crosshair';
+  };
+  els.allEqChart.onmouseleave=hideTooltip;
+}
+
+function openRun(id){
+  const r=runs.find(x=>x.id===id);
+  if(!r)return;
+  selectedRunId=id;
+  selectedSimIndex=0;
+  els.runDetail.style.display='block';
+  els.detailTitle.textContent=`Run • ${new Date(r.when).toLocaleString()}`;
+  els.detailMeta.innerHTML=`
+    Start <span class="num">$${plain(r.p.capital)}</span> • Target <span class="num">$${plain(r.p.targetPerHour)}/hr</span> •
+    ${r.p.hours} hrs • ${r.p.secPerTrade}s/trade • ${r.p.sims.toLocaleString()} sims •
+    Success <span class="num ${r.successRate>=50?'pos':'neg'}">${r.successRate.toFixed(1)}%</span> •
+    Avg <span class="num ${r.avgHr>=0?'pos':'neg'}">${money(r.avgHr)}/hr</span>
+  `;
+  const results=runBatchSync(r.p, r.seed);
+  renderRunDetail(results, r.p);
+  renderHistory();
+}
+
+function runBatchSync(p, seed){
+  const rng=xorshift32(seed);
+  const results=[];
+  for(let s=0;s<p.sims;s++)results.push(simulateOne(p,rng));
+  return results;
+}
+
+function renderRunDetail(results, p){
+  const successCount=results.filter(r=>r.reachedTarget).length;
+  const ruinCount=results.filter(r=>r.ruined).length;
+  const avgEnd=results.reduce((a,r)=>a+r.endBalance,0)/results.length;
+  const avgProfit=results.reduce((a,r)=>a+r.profit,0)/results.length;
+  const avgHr=avgProfit/p.hours;
+  const avgDD=results.reduce((a,r)=>a+r.maxDD,0)/results.length;
+  const wins=results.reduce((a,r)=>a+r.trades.filter(t=>t.win).length,0);
+  const totalTrades=results.reduce((a,r)=>a+r.trades.length,0);
+  const winRate = totalTrades ? (wins/totalTrades*100) : 0;
+  const grossWins = results.reduce((a,r)=>a+r.trades.filter(t=>t.win).reduce((s,t)=>s+t.pnl,0),0);
+  const grossLosses = results.reduce((a,r)=>a+r.trades.filter(t=>!t.win).reduce((s,t)=>s+t.pnl,0),0);
+  const profitFactor = grossLosses !== 0 ? Math.abs(grossWins/grossLosses) : 0;
+
+  els.detailStats.innerHTML=`
+    <div class="rd-stat"><div class="l">Success rate</div><div class="v ${successCount/results.length*100>=50?'pos':'neg'}">${(successCount/results.length*100).toFixed(1)}%</div></div>
+    <div class="rd-stat"><div class="l">Avg ending balance</div><div class="v ${avgEnd>=p.capital?'pos':'neg'}">$${plain(avgEnd)}</div></div>
+    <div class="rd-stat"><div class="l">Avg profit / hr</div><div class="v ${avgHr>=0?'pos':'neg'}">${money(avgHr)}</div></div>
+    <div class="rd-stat"><div class="l">Ruin rate</div><div class="v ${ruinCount>0?'neg':'neu'}">${(ruinCount/results.length*100).toFixed(1)}%</div></div>
+    <div class="rd-stat"><div class="l">Avg max drawdown</div><div class="v neg">$${plain(avgDD)}</div></div>
+    <div class="rd-stat"><div class="l">Trade win rate</div><div class="v neu">${winRate.toFixed(1)}%</div></div>
+    <div class="rd-stat"><div class="l">Profit factor</div><div class="v ${profitFactor>=1?'pos':'neg'}">${profitFactor.toFixed(2)}</div></div>
+    <div class="rd-stat"><div class="l">Total sims</div><div class="v neu">${results.length}</div></div>
+  `;
+  els.detailSimPicker.innerHTML='';
+  for(let s=0;s<results.length;s++){
+    const opt=document.createElement('option');
+    opt.value=s;
+    opt.textContent=`Simulation #${s+1} • $${plain(results[s].endBalance)} • ${results[s].reachedTarget?'TARGET HIT':results[s].ruined?'RUINED':''}`;
+    els.detailSimPicker.appendChild(opt);
+  }
+  els.detailSimPicker.value=selectedSimIndex;
+  showSim(results[selectedSimIndex], p);
+}
+
+function onSimChange(){
+  selectedSimIndex=parseInt(els.detailSimPicker.value);
+  const r=runs.find(x=>x.id===selectedRunId);
+  if(!r)return;
+  const results=runBatchSync(r.p, r.seed);
+  showSim(results[selectedSimIndex], r.p);
+}
+
+function showSim(res, p){
+  drawDetailEq(res.equity);
+  const hourly={};
+  res.trades.forEach(tr=>{
+    const hr=Math.floor(tr.t/(3600*1000));
+    hourly[hr]=(hourly[hr]||0)+tr.pnl;
+  });
+  const hoursCount=Math.ceil(p.hours);
+  els.detailHourly.innerHTML='';
+  for(let h=0;h<hoursCount;h++){
+    const v=hourly[h]||0;
+    const div=document.createElement('div');
+    div.className='hourly-col';
+    div.innerHTML=`<div class="h">Hour ${h+1}</div><div class="v ${v>=0?'pos':'neg'}">${money(v)}</div>`;
+    els.detailHourly.appendChild(div);
+  }
+  const body=els.detailTrades;body.innerHTML='';
+  res.trades.forEach((tr,i)=>{
+    const trEl=document.createElement('tr');
+    trEl.innerHTML=`
+      <td class="num">#${i+1}</td>
+      <td>${fmtTime(tr.t)}</td>
+      <td class="num">${plain(tr.entry)}</td>
+      <td class="num">${plain(tr.exit)}</td>
+      <td class="num ${tr.pnl>=0?'pos':'neg'}">${money(tr.pnl)}</td>
+      <td class="num ${tr.win!==false?'win':'loss'}">${tr.win!==false?'WIN':'LOSS'}</td>
+    `;
+    body.appendChild(trEl);
+  });
+}
+
+function drawDetailEq(equity){
+  const c=els.detailEq;const ctx=c.getContext('2d');const dpr=window.devicePixelRatio||1;
+  const cs=getComputedStyle(c);c.width=parseInt(cs.width)*dpr;c.height=parseInt(cs.height)*dpr;ctx.scale(dpr,dpr);
+  const w=c.clientWidth,h=c.clientHeight;const pad=26;
+  ctx.clearRect(0,0,w,h);
+  ctx.strokeStyle='#1a1a1a';ctx.lineWidth=1;ctx.beginPath();
+  for(let i=0;i<=5;i++){const y=pad+(h-2*pad)*(i/5);ctx.moveTo(pad,y);ctx.lineTo(w-pad,y)}ctx.stroke();
+  const mn=Math.min(...equity),mx=Math.max(...equity);
+  ctx.font='10px sans-serif';ctx.fillStyle='#666';ctx.textAlign='right';
+  ctx.fillText(mx.toFixed(0),w-pad,pad+10);
+  ctx.fillText(mn.toFixed(0),w-pad,h-pad-4);
+  const y0=h-pad-(0-mn)/(mx-mn||1)*(h-2*pad);
+  if(y0>=pad&&y0<=h-pad){ctx.strokeStyle='#2a2a2a';ctx.lineWidth=1;ctx.setLineDash([5,5]);ctx.beginPath();ctx.moveTo(pad,y0);ctx.lineTo(w-pad,y0);ctx.stroke();ctx.setLineDash([])}
+  ctx.beginPath();
+  equity.forEach((v,i)=>{
+    const x=pad+(i/(equity.length-1))*(w-2*pad);
+    const y=h-pad-(v-mn)/(mx-mn||1)*(h-2*pad);
+    if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  });
+  ctx.strokeStyle=equity[equity.length-1]>=equity[0]?'#00ff88':'#ff4d4d';
+  ctx.lineWidth=2;ctx.stroke();
+}
+
+function updateTradeEstimate(){
+  const p=readParams();
+  const tradesPerSim=Math.max(1,Math.floor(p.hours*3600/p.secPerTrade));
+  const total=tradesPerSim*p.sims;
+  els.tradeEstimate.textContent=`~${total.toLocaleString()} trades total (${tradesPerSim} per sim × ${p.sims} sims)`;
+  els.tradeEstimate.style.color = total>2000000 ? 'var(--red)' : 'var(--muted)';
+  if(total>2000000) els.tradeEstimate.textContent+=' ⚠️ this may take a while';
+}
+
+function run(){
+  try{
+    const p=readParams();
+    if(!p.capital||!p.targetPerHour||!p.hours||!p.sims){alert('Please fill in capital, target $/hr, hours, and simulations.');return}
+    const totalTrades=Math.max(1,Math.floor(p.hours*3600/p.secPerTrade))*p.sims;
+    if(totalTrades>2000000 && !confirm(`This will run ~${totalTrades.toLocaleString()} trades. It may take a while. Continue?`)) return;
+
+    els.btnRun.disabled=true;
+    els.btnRun.style.display='none';
+    els.btnStop.style.display='inline-flex';
+    els.runStatus.textContent='Running simulations…';
+    els.progressWrap.style.display='block';
+    els.progressBar.style.width='0%';
+
+    const seed=Date.now();
+    targetBalanceInternal = p.capital + p.targetPerHour * p.hours;
+
+    (async()=>{
+      const results=await runBatchAsync(p, seed, prog=>{
+        els.progressBar.style.width=Math.round(prog*100)+'%';
+        els.runStatus.textContent=`Running simulations… ${Math.round(prog*100)}%`;
+      });
+      els.btnRun.disabled=false;
+      els.btnRun.style.display='inline-flex';
+      els.btnStop.style.display='none';
+      els.progressWrap.style.display='none';
+
+      if(stopFlag){els.runStatus.textContent='Stopped.';return;}
+
+      const successCount=results.filter(r=>r.reachedTarget).length;
+      const ruinCount=results.filter(r=>r.ruined).length;
+      const avgEnd=results.reduce((a,r)=>a+r.endBalance,0)/results.length;
+      const avgProfit=results.reduce((a,r)=>a+r.profit,0)/results.length;
+      const avgHr=avgProfit/p.hours;
+      const avgDD=results.reduce((a,r)=>a+r.maxDD,0)/results.length;
+      const summary={successRate:(successCount/results.length)*100,avgEnd,avgHr,ruinRate:(ruinCount/results.length)*100,avgDD};
+      updateStats(summary);
+      drawHistogram(els.histChart,results);
+      drawAllEquity(els.allEqChart,results);
+      drawScatter(els.scatterChart,results,p);
+      setupCanvasClicks();
+
+      const runRecord={
+        id:Date.now().toString(36)+Math.random().toString(36).slice(2,4),
+        when:new Date().toISOString(),
+        p,
+        seed,
+        successRate:summary.successRate,
+        avgHr,
+        avgEnd
+      };
+      runs.unshift(runRecord);if(runs.length>50)runs.length=50;
+      saveRuns();
+      renderHistory();
+      els.runStatus.textContent=`Completed ${p.sims.toLocaleString()} simulations — ${summary.successRate.toFixed(1)}% reached target`;
+    })();
+  }catch(e){
+    alert('ERROR: '+e.message);
+    console.error(e);
+    els.btnRun.disabled=false;
+    els.btnRun.style.display='inline-flex';
+    els.btnStop.style.display='none';
+    els.progressWrap.style.display='none';
+  }
+}
+
+function stop(){
+  stopFlag=true;
+  els.btnStop.style.display='none';
+  els.btnRun.disabled=false;
+  els.btnRun.style.display='inline-flex';
+  els.runStatus.textContent='Stopping…';
+}
+
+function closeDetail(){
+  selectedRunId=null;
+  selectedSimIndex=0;
+  els.runDetail.style.display='none';
+  renderHistory();
+}
+
+function delRun(id){
+  if(!confirm('Delete this run?'))return;
+  if(selectedRunId===id)closeDetail();
+  runs=runs.filter(r=>r.id!==id);
+  saveRuns();
+  renderHistory();
+}
+function clearRuns(){
+  if(!confirm('Clear all saved runs?'))return;
+  closeDetail();
+  runs=[];
+  saveRuns();
+  renderHistory();
+}
+function clearStat(key){
+  switch(key){
+    case 'success': els.sSuccess.textContent='—%'; els.sSuccess.className='v neu'; break;
+    case 'avgEnd': els.sAvgEnd.textContent='$0'; els.sAvgEnd.className='v neu'; break;
+    case 'avgHr': els.sAvgHr.textContent='$0.00'; els.sAvgHr.className='v neu'; break;
+    case 'ruin': els.sRuin.textContent='—%'; els.sRuin.className='v neu'; break;
+    case 'dd': els.sDD.textContent='$0'; els.sDD.className='v neu'; break;
+  }
+}
+function clearChart(key){
+  const c=els[key+'Chart'];
+  if(!c)return;
+  const ctx=c.getContext('2d');ctx.clearRect(0,0,c.clientWidth,c.clientHeight);
+  ctx.fillStyle='#666';ctx.font='12px sans-serif';ctx.textAlign='center';ctx.fillText('Cleared',c.clientWidth/2,c.clientHeight/2);
+  if(key==='hist')histBins=[];
+  if(key==='scatter')scatterPoints=[];
+  if(key==='allEq')eqLines=[];
+}
+
+// ---------- EVENT LISTENERS ----------
+els.btnRun.addEventListener('click', run);
+els.btnStop.addEventListener('click', stop);
+els.btnClear.addEventListener('click', clearRuns);
+els.btnClearAll.addEventListener('click', clearRuns);
+els.detailSimPicker.addEventListener('change', onSimChange);
+document.getElementById('btnCloseDetail').addEventListener('click', closeDetail);
+
+document.querySelectorAll('.stat-clear').forEach(btn=>{
+  btn.addEventListener('click',()=>clearStat(btn.dataset.stat));
+});
+document.querySelectorAll('.chart-clear').forEach(btn=>{
+  btn.addEventListener('click',()=>clearChart(btn.dataset.chart));
+});
+
+[els.cap,els.targetPerHour,els.hours,els.secPerTrade,els.sims].forEach(inp=>{
+  inp.addEventListener('input',updateTradeEstimate);
+});
+
+// ---------- INIT ----------
+runs=loadRuns();
+updateTradeEstimate();
+renderHistory();
+console.log('Stock Bot Simulator initialized. runs=',runs.length);
+</script>
+</body>
+</html>
