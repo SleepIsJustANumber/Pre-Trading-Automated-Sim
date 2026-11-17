@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Stock Bot Simulator — Realistic Market</title>
+<title>Stock Bot Simulator — Realistic Market Model</title>
 <style>
   :root{
     --bg:#0a0a0a;
@@ -50,7 +50,8 @@
     .history{grid-column:2;}
     .run-detail{grid-column:2;}
   }
-  .left-col{display:flex;flex-direction:column;gap:16px}
+  .left-col{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+  @media(max-width:900px){.left-col{grid-template-columns:1fr}}
 
   .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px;box-shadow:var(--shadow)}
   .card h3{font-size:0.85rem;color:var(--muted);margin-bottom:12px;text-transform:uppercase;letter-spacing:0.6px}
